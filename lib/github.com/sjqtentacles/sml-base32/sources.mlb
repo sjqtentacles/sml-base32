@@ -1,0 +1,6 @@
+(* Source files for the sml-base32 library, in dependency order. *)
+
+$(SML_LIB)/basis/basis.mlb
+
+base32.sig
+base32.sml

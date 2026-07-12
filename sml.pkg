@@ -1,4 +1,5 @@
 package github.com/sjqtentacles/sml-base32
 
 require {
+  github.com/sjqtentacles/sml-check
 }

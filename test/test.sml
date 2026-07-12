@@ -123,6 +123,71 @@ struct
       val () = Harness.check "base32hex round-trips"  (fuzzOk (Base32.encodeHex,       Base32.decodeHex)       64)
       val () = Harness.check "crockford round-trips"  (fuzzOk (Base32.encodeCrockford, Base32.decodeCrockford) 64)
       val () = Harness.check "z-base-32 round-trips"  (fuzzOk (Base32.encodeZ,         Base32.decodeZ)         64)
+
+      (* ---- Properties (sml-check, seed 0wx853C49E6748FEA9B default) ----
+         decode-of-encode is the central law for every codec in this repo:
+         for any byte string, decoding what we just encoded must return the
+         original bytes. Fixed vector tests above only cover a handful of
+         hand-picked inputs; these properties fuzz across random lengths and
+         byte content. *)
+      val () = Harness.section "Properties (sml-check)"
+
+      (* Random byte strings of length 0..64, covering every byte value. *)
+      val genByteStr : string Check.gen =
+        Check.map (String.implode o List.map Char.chr)
+          (Check.resize 64 (Check.listOf (Check.choose (0, 255))))
+
+      fun showByteStr (s : string) : string =
+        "\"" ^
+        String.concat
+          (List.map
+             (fn c =>
+                let val n = Char.ord c
+                    fun hx d = if d < 10 then Char.chr (d + 48) else Char.chr (d + 87)
+                in String.implode [hx (n div 16), hx (n mod 16)] end)
+             (String.explode s))
+        ^ "\" (len=" ^ Int.toString (String.size s) ^ ")"
+
+      fun rtProp (enc, dec) =
+        Check.forAll genByteStr showByteStr
+          (fn s => dec (enc s) = SOME s)
+
+      val () =
+        Harness.check "prop: standard Base32 round-trips"
+          (case Check.quickCheck (rtProp (Base32.encode, Base32.decode)) of
+               Check.Passed _ => true
+             | Check.Failed _ => false)
+
+      val () =
+        Harness.check "prop: base32hex round-trips"
+          (case Check.quickCheck (rtProp (Base32.encodeHex, Base32.decodeHex)) of
+               Check.Passed _ => true
+             | Check.Failed _ => false)
+
+      val () =
+        Harness.check "prop: Crockford Base32 round-trips"
+          (case Check.quickCheck (rtProp (Base32.encodeCrockford, Base32.decodeCrockford)) of
+               Check.Passed _ => true
+             | Check.Failed _ => false)
+
+      val () =
+        Harness.check "prop: z-base-32 round-trips"
+          (case Check.quickCheck (rtProp (Base32.encodeZ, Base32.decodeZ)) of
+               Check.Passed _ => true
+             | Check.Failed _ => false)
+
+      (* Format invariant: standard Base32 output only ever uses the RFC 4648
+         alphabet plus '=' padding. *)
+      val () =
+        Harness.check "prop: standard Base32 output stays within alphabet+padding"
+          (case Check.quickCheck
+                  (Check.forAll genByteStr showByteStr
+                     (fn s =>
+                        List.all
+                          (fn c => Char.contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567=" c)
+                          (String.explode (Base32.encode s)))) of
+               Check.Passed _ => true
+             | Check.Failed _ => false)
     in
       Harness.run ()
     end
